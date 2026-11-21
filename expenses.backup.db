@@ -1,0 +1,210 @@
+from database import connect_db
+from datetime import datetime
+
+
+def add_transaction():
+    print("\n--- Add Transaction ---")
+
+    title = input("Enter title: ").strip()
+
+    if not title:
+        print("Title cannot be empty!")
+        return
+
+    try:
+        amount = float(input("Enter amount: "))
+
+        if amount <= 0:
+            print("Amount must be greater than zero!")
+            return
+
+    except ValueError:
+        print("Please enter a valid amount!")
+        return
+
+    category = input("Enter category: ").strip()
+
+    if not category:
+        print("Category cannot be empty!")
+        return
+
+    transaction_type = input(
+        "Enter type (income/expense): "
+    ).strip().lower()
+
+    if transaction_type not in ["income", "expense"]:
+        print("Invalid transaction type!")
+        return
+
+    date = input(
+        "Enter date (YYYY-MM-DD) or press Enter for today: "
+    ).strip()
+
+    if not date:
+        date = datetime.today().strftime("%Y-%m-%d")
+
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        print("Invalid date format!")
+        return
+
+    conn = connect_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT INTO transactions
+        (title, amount, category, transaction_type, date)
+        VALUES (?, ?, ?, ?, ?)
+    """, (title, amount, category, transaction_type, date))
+
+    conn.commit()
+    conn.close()
+
+    print("Transaction added successfully!")
+
+
+def view_transactions():
+    conn = connect_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT * FROM transactions
+        ORDER BY date DESC, id DESC
+    """)
+
+    records = cursor.fetchall()
+    conn.close()
+
+    print("\n--- All Transactions ---")
+
+    if not records:
+        print("No transactions found!")
+        return
+
+    print("-" * 85)
+    print(f"{'ID':<5}{'Title':<18}{'Amount':<12}"
+          f"{'Category':<15}{'Type':<12}{'Date':<12}")
+    print("-" * 85)
+
+    for row in records:
+        print(
+            f"{row[0]:<5}{row[1]:<18}{row[2]:<12.2f}"
+            f"{row[3]:<15}{row[4]:<12}{row[5]:<12}"
+        )
+
+
+def update_transaction():
+    view_transactions()
+
+    try:
+        transaction_id = int(
+            input("\nEnter transaction ID to update: ")
+        )
+    except ValueError:
+        print("Invalid ID!")
+        return
+
+    conn = connect_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT * FROM transactions WHERE id = ?",
+        (transaction_id,)
+    )
+
+    record = cursor.fetchone()
+
+    if not record:
+        print("Transaction not found!")
+        conn.close()
+        return
+
+    print("Press Enter to keep the existing value.")
+
+    title = input(f"New title [{record[1]}]: ").strip()
+    amount_input = input(f"New amount [{record[2]}]: ").strip()
+    category = input(f"New category [{record[3]}]: ").strip()
+    transaction_type = input(
+        f"New type [{record[4]}]: "
+    ).strip().lower()
+    date = input(f"New date [{record[5]}]: ").strip()
+
+    try:
+        amount = float(amount_input) if amount_input else record[2]
+
+        if amount <= 0:
+            raise ValueError
+
+        if transaction_type and transaction_type not in [
+            "income", "expense"
+        ]:
+            raise ValueError
+
+        if date:
+            datetime.strptime(date, "%Y-%m-%d")
+
+    except ValueError:
+        print("Invalid amount, type or date!")
+        conn.close()
+        return
+
+    cursor.execute("""
+        UPDATE transactions
+        SET title = ?, amount = ?, category = ?,
+            transaction_type = ?, date = ?
+        WHERE id = ?
+    """, (
+        title or record[1],
+        amount,
+        category or record[3],
+        transaction_type or record[4],
+        date or record[5],
+        transaction_id
+    ))
+
+    conn.commit()
+    conn.close()
+
+    print("Transaction updated successfully!")
+
+
+def delete_transaction():
+    view_transactions()
+
+    try:
+        transaction_id = int(
+            input("\nEnter transaction ID to delete: ")
+        )
+    except ValueError:
+        print("Invalid ID!")
+        return
+
+    conn = connect_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT id FROM transactions WHERE id = ?",
+        (transaction_id,)
+    )
+
+    if not cursor.fetchone():
+        print("Transaction not found!")
+        conn.close()
+        return
+
+    confirm = input(
+        "Are you sure you want to delete? (yes/no): "
+    ).strip().lower()
+
+    if confirm == "yes":
+        cursor.execute(
+            "DELETE FROM transactions WHERE id = ?",
+            (transaction_id,)
+        )
+        conn.commit()
+        print("Transaction deleted successfully!")
+    else:
+        print("Deletion cancelled.")
+
+    conn.close()
